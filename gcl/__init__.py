@@ -167,11 +167,11 @@ class NormalLoader(object):
     self.fs = fs
     self.cache = Cache()
 
-  def __call__(self, current_file, rel_path):
+  def __call__(self, current_file, rel_path, env=None):
     nice_path, full_path = self.fs.resolve(current_file, rel_path)
 
     # Cache on full path, but tell script about nice path
-    do_load = lambda: loads(self.fs.load(full_path), filename=nice_path, loader=self)
+    do_load = lambda: loads(self.fs.load(full_path), filename=nice_path, loader=self, env=env)
     return self.cache.get(full_path, do_load)
 
 
@@ -220,6 +220,13 @@ class EmptyEnvironment(object):
   def keys(self):
     return set()
 
+  @property
+  def root(self):
+    return self
+
+  def extend(self, d):
+    return Environment(d or {}, self)
+
 
 class SourceLocation(object):
   def __init__(self, string, offset):
@@ -266,6 +273,13 @@ class Environment(object):
     if key in self.names:
       return True
     return key in self.parent
+
+  @property
+  def root(self):
+    if isinstance(self.parent, EmptyEnvironment):
+      return self
+    else:
+      return self.parent.root
 
   def extend(self, d):
     return Environment(d or {}, self)
@@ -799,11 +813,35 @@ class Include(Thunk):
       raise EvaluationError('Included argument (%r) must be a string, got %r' %
                             (self.file_ref, file_ref))
 
-    return self.loader(self.current_file, file_ref)
+    return self.loader(self.current_file, file_ref, env=env.root)
 
   def __repr__(self):
     return 'include(%r)' % self.file_ref
 
+
+class Lambda(Thunk):
+  def __init__(self, *args):
+    self.ident = obj_ident()
+    self.params = args[:-1]
+    self.expr = args[-1]
+
+  def eval(self, env):
+    def fn(*args):
+      if len(args) != len(self.params):
+        raise EvaluationError('Lambda (%r) passed wrong number of params (%r)' % (
+            self, self.params))
+
+      new_vars = {p: v for p, v in zip(self.params, args)}
+      new_env = env.extend(new_vars)
+      return eval(self.expr, new_env)
+
+    return fn
+
+  def __repr__(self):
+    param_str = ', '.join(map(repr, self.params))
+    if param_str:
+      param_str = ' ' + param_str
+    return 'lambda%s: %r' % (param_str, self.expr)
 
 #----------------------------------------------------------------------
 #  Grammar
@@ -831,13 +869,13 @@ def bracketedList(l, r, sep, expr, what):
   return (sym(l) - listMembers(sep, expr, what) - sym(r)).setParseAction(head)
 
 
-keywords = ['and', 'or', 'not', 'if', 'then', 'else', 'include', 'inherit', 'null', 'true', 'false']
+keywords = ['and', 'or', 'not', 'if', 'then', 'else', 'include', 'inherit', 'null', 'true', 'false', 'lambda']
 
 expression = p.Forward()
 
 comment = '#' + p.restOfLine
 
-identifier = p.Regex(r'[a-zA-Z_][a-zA-Z0-9_:-]*')
+identifier = p.Regex(r'[a-zA-Z_][a-zA-Z0-9_-]*')
 
 # Contants
 integer = p.Word(p.nums).setParseAction(do(head, int, Constant))
@@ -874,6 +912,9 @@ if_then_else = (kw('if') - expression -
                 kw('then') - expression -
                 kw('else') - expression).setParseAction(doapply(Condition))
 
+parameter = identifier.copy()
+lambda_ = (kw('lambda') - listMembers(',', parameter, list) - sym(':') - expression).setParseAction(doapply(Lambda))
+
 # We don't allow space-application here
 # Now our grammar is becoming very dirty and hackish
 deref = p.Forward()
@@ -889,6 +930,7 @@ atom = (tuple
         | unary_op
         | parenthesized_expr
         | if_then_else
+        | lambda_
         | include
         | floating
         | integer

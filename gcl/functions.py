@@ -1,5 +1,6 @@
 """GCL standard library functions."""
 
+import functools
 from os import path
 import gcl
 
@@ -53,6 +54,20 @@ def fmt(str, args=None, env=None):
   return str.format(**proxies)
 
 
+def map_wrapper(fn, lst, env=None):
+  if isinstance(fn, EnvironmentFunction):
+    fn = functools.partial(fn, env=env)
+
+  return list(map(fn, lst))
+
+
+def filter_wrapper(fn, lst, env=None):
+  if isinstance(fn, EnvironmentFunction):
+    fn = functools.partial(fn, env=env)
+
+  return list(filter(fn, lst))
+
+
 class EnvironmentFunction(object):
   """Wrapper class for a special function that can use the env."""
   def __init__(self, fn):
@@ -65,8 +80,10 @@ class EnvironmentFunction(object):
 builtin_functions = {
     'eager': eager,
     'path_join': path.join,
-    'fmt': EnvironmentFunction(fmt)
-    }
+    'fmt': EnvironmentFunction(fmt),
+    'map': EnvironmentFunction(map_wrapper),
+    'filter': EnvironmentFunction(filter_wrapper),
+}
 
 
 # Binary operators, by precedence level
@@ -74,6 +91,7 @@ binary_operators = [
     {
       '*': lambda x, y: x * y,
       '/': lambda x, y: x / y,
+      '%': lambda x, y: x % y,
     }, {
       '+': lambda x, y: x + y,
       '-': lambda x, y: x - y,

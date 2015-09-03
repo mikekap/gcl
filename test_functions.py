@@ -32,3 +32,18 @@ class TestStringInterpolation(unittest.TestCase):
     y = fmt 'Hi {things.foo}'
     """)
     self.assertEquals('Hi FOO', x['y'])
+
+  def testMap(self):
+    x = gcl.loads("""
+    lst = [1, 2];
+    y = map(lambda x: {hello = x}, lst)
+    """)
+    self.assertEquals(1, x['y'][0]['hello'])
+    self.assertEquals(2, x['y'][1]['hello'])
+
+  def testFilter(self):
+    x = gcl.loads("""
+    lst = [1, 2, 3];
+    y = filter(lambda x: x % 2 == 0, lst)
+    """)
+    self.assertEquals([2], x['y'])

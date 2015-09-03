@@ -70,9 +70,7 @@ concatenation).
 
     inc(1)
 
-Function application also looks the same as in Python. There's currently no way
-to define functions in GCL, but you can invoke functions passed in from the
-external environment.
+Function application also looks the same as in Python.
 
     inc 1
 
@@ -84,6 +82,13 @@ put a space between the function and the argument.
     }
 
     that_foo = tuple.foo;
+
+To create a function in GCL use the lambda syntax:
+
+    fn = lambda x, y, z: x + y * z;
+    result = fn(1, 2, 3)  # 7
+
+You can also add more functions by passing in an Environment to loads.
 
 Periods are used to dereference tuples.
 

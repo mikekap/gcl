@@ -39,13 +39,21 @@ class TestBasics(unittest.TestCase):
     self.assertEquals(True, parse('true'))
     self.assertEquals(False, parse('false'))
 
+  def testLambda(self):
+    fn = parse('lambda: true')
+    self.assertEquals(True, fn())
+
+  def testLambdaParams(self):
+    fn = parse('lambda x: x + 1')
+    self.assertEquals(0, fn(-1))
+
   def testComments(self):
     self.assertEquals(3, parse("""
       # comment
       3
       """))
 
-  def testComments(self):
+  def testComments2(self):
     self.assertEquals(3, parse("""
       3
       # comment"""))
@@ -58,10 +66,6 @@ class TestBasics(unittest.TestCase):
 
   def testIdentifierWithDash(self):
     x = parse('hello-world', env={'hello-world': 1})
-    self.assertEquals(1, x)
-
-  def testIdentifierWithColon(self):
-    x = parse('hello:world', env={'hello:world': 1})
     self.assertEquals(1, x)
 
 
@@ -274,6 +278,11 @@ class TestApplication(unittest.TestCase):
     self.assertEquals(3, x['y'])
     self.assertEquals(3, x['z'])
 
+
+  def testCallLambdaInTuple(self):
+    val = parse('''{ x = { fn = lambda x: x + 1; val = fn(-2) } }''')
+    self.assertEquals(-1, val['x']['val'])
+    self.assertEquals(0, val['x']['fn'](-1))
 
   def testApplyingVariableToString(self):
     x = parse_tuple("""
@@ -544,15 +553,24 @@ class TestStandardLibrary(unittest.TestCase):
 
 class TestIncludes(unittest.TestCase):
   def parse(self, fname, s):
-    return gcl.loads(s, filename=fname, loader=self.loader)
+    return gcl.loads(s, filename=fname, loader=self.loader,
+                     env=gcl.Environment({'thing': 'yes'}))
 
-  def loader(self, base, rel):
+  def loader(self, base, rel, env=None):
     target_path = gcl.find_relative(path.dirname(base), rel)
-    return gcl.loads('loaded_from = %r' % target_path)
+    return gcl.loads('loaded_from = %r; z = thing' % target_path, env=env)
 
   def testRelativeInclude(self):
     t = self.parse('/home/me/file', 'inc = include "other_file"')
     self.assertEquals('/home/me/other_file', t['inc']['loaded_from'])
+    self.assertEquals('yes', t['inc']['z'])
+
+  def testEnvPropagation(self):
+    t = self.parse('/home/me/file', 'thing = "no"; z = "no"; inc = include "other_file"')
+    self.assertEquals('/home/me/other_file', t['inc']['loaded_from'])
+    self.assertEquals('no', t['thing'])
+    self.assertEquals('no', t['z'])
+    self.assertEquals('yes', t['inc']['z'])
 
   def testRelativeIncludeUp(self):
     t = self.parse('/home/me/file', 'inc = include "../other_file"')
